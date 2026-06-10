@@ -1,6 +1,6 @@
-# boe-pipeline
+# esios-pipeline
 
-> A data ingestion pipeline for the **Spanish Official State Gazette (BOE)** built on top of [Spool](https://github.com/spool-framework), a reactive data pipeline framework for Java.
+> A data ingestion pipeline for the **Spanish Electricity Grid (REE) ESIOS API** built on top of [Spool](https://github.com/spool-framework), a reactive data pipeline framework for Java.
 
 ---
 
@@ -8,9 +8,9 @@
 
 This example demonstrates how to use Spool to build a complete pipeline that:
 
-1. **Polls daily** the BOE open data API (`boe.es/datosabiertos`)
-2. **Normalizes** the gazette's hierarchical JSON structure (sections → departments → epigraphs → items) into a flat list of individual events
-3. **Maps** each item to a typed domain event (`BoeItem`)
+1. **Polls every 10 minutes** the REE ESIOS API for energy market indicator data (indicator `1293`)
+2. **Normalizes** the JSON array of indicator values into individual events
+3. **Enriches** each event with the parent indicator ID from the API response
 4. **Persists** events to a local data lake via the ingester module
 5. **Cleans up** expired events automatically through the janitor module
 
@@ -18,14 +18,14 @@ This example demonstrates how to use Spool to build a complete pipeline that:
 
 ## Pipeline architecture
 
-The entire pipeline is declared in a single YAML file (`pipeline-boe.yaml`):
+The entire pipeline is declared in a single YAML file (`pipeline.yaml`):
 
 ```yaml
 modules:
-  - crawler:        # Fetches and normalizes the source
+  - crawler:        # Polls the ESIOS API on a schedule
       type: POLL
       source:
-        type: HTTP  # Custom plugin: BOEHTTPPollSource
+        type: ESIOS_HTTP  # Custom plugin: EsiosHTTPPollSource
 
   - ingester:       # Persists events to the data lake
       type: REACTIVE
@@ -34,96 +34,78 @@ modules:
 ```
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Spool Runtime                        │
-│                                                         │
-│  ┌──────────┐    ┌───────────┐    ┌───────────────┐    │
-│  │ Crawler  │───▶│ Event Bus │───▶│   Ingester    │    │
-│  │  (POLL)  │    │(IN_MEMORY)│    │  (REACTIVE)   │    │
-│  └──────────┘    └───────────┘    └───────┬───────┘    │
-│       │                                   │            │
-│  BOE Open API                      Data Lake (FS)      │
-│  (HTTP)                                                 │
-│                          ┌────────────┐               │
-│                          │   Janitor  │               │
-│                          │   (TTL)    │               │
-│                          └────────────┘               │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    Spool Runtime                         │
+│                                                          │
+│  ┌──────────┐    ┌───────────┐    ┌───────────────┐     │
+│  │ Crawler  │───▶│ Event Bus │───▶│   Ingester    │     │
+│  │  (POLL)  │    │(IN_MEMORY)│    │  (REACTIVE)   │     │
+│  └──────────┘    └───────────┘    └───────┬───────┘     │
+│       │                                   │             │
+│  REE ESIOS API                     Data Lake (FS)       │
+│  (HTTP + API key)                                        │
+│                          ┌────────────┐                 │
+│                          │   Janitor  │                 │
+│                          │   (TTL)    │                 │
+│                          └────────────┘                 │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Custom plugins
+## Custom plugin
 
-Spool uses a Java SPI-based plugin system. This example implements two plugins:
+Spool uses a Java SPI-based plugin system. This example implements one plugin:
 
-### `BOEHTTPPollSource` / `BOEHTTPPollSourceProvider`
+### `EsiosHTTPPollSource` / `EsiosHTTPPollSourceProvider`
 
-A POLL source that downloads the current day's gazette summary from the BOE API. Today's date is automatically appended to the base URL in `YYYYMMDD` format.
+A POLL source that authenticates against the REE ESIOS API using an `x-api-key` header and fetches indicator values on a configurable schedule.
 
 ```java
 @SpoolPlugin(PollSourceProvider.class)
-public class BOEHTTPPollSourceProvider implements PollSourceProvider {
-    @Override public String name() { return "BOE_HTTP"; }
+public class EsiosHTTPPollSourceProvider implements PollSourceProvider {
+    @Override public String name() { return "ESIOS_HTTP"; }
     // ...
 }
 ```
 
-### `BOEJSONArrayNormalizerProvider` + `NormalizeSummary`
+### Enrichment
 
-A normalizer that runs the raw BOE payload through a transformation pipeline:
+The pipeline enriches each value event with `indicator_id` extracted from the parent `indicator.id` field in the response, keeping the indicator context on every individual record:
 
-```
-byte[] raw
-  → DeserializeStep     (JSON bytes → JsonNode)
-  → NormalizeSummary    (flattens sections/departments/epigraphs → item list)
-  → LocateStep          (navigates to the rootPath declared in YAML)
-  → SplitEnrichStep     (splits the array into individual enriched events)
-  → SerializeStep       (JsonNode → byte[])
+```yaml
+enrichmentList:
+  - source: indicator.id
+    target: indicator_id
 ```
 
 ---
 
-## Domain event model
+## Pipeline configuration
 
-Each BOE item is represented as a Java record implementing Spool's `Event` interface:
-
-```java
-public record BoeItem(
-    String identifier,
-    String title,
-    String correlationId,   // Daily summary ID
-    String publishDate,     // Publication date (YYYYMMDD)
-    String sectionCode,
-    String sectionName,
-    String departmentCode,
-    String departmentName,
-    String epigraphName,
-    String urlHtml,
-    String urlXml,
-    String urlPdf
-) implements Event { ... }
-```
+| Parameter | Value |
+|-----------|-------|
+| API URL | `https://api.esios.ree.es/indicators/1293` |
+| Auth | `x-api-key` header |
+| Poll interval | 600 000 ms (10 min) |
+| Root path | `indicator.values` |
+| Naming convention | `SNAKE_CASE` |
+| Janitor TTL | 600 000 ms |
 
 ---
 
 ## Project structure
 
 ```
-boe-pipeline/
-├── src/main/java/
-│   ├── events/
-│   │   └── BoeItem.java                           # Domain event model
-│   └── software/examples/spool/boe/
-│       ├── Application.java                        # Runtime configuration
-│       ├── Main.java                               # Entry point
-│       └── plugins/
-│           ├── BOEHTTPPollSource.java              # HTTP client for the BOE API
-│           ├── BOEHTTPPollSourceProvider.java      # SPI plugin: poll source
-│           ├── BOEJSONArrayNormalizerProvider.java # SPI plugin: normalizer
-│           └── NormalizeSummary.java               # Summary flattening step
+esios-pipeline/
+├── src/main/java/software/examples/spool/esios/
+│   ├── Application.java                        # Runtime configuration
+│   ├── Main.java                               # Entry point
+│   └── plugins/
+│       ├── EsiosHTTPPollSource.java            # HTTP client for the ESIOS API
+│       └── EsiosHTTPPollSourceProvider.java    # SPI plugin: poll source
 ├── src/main/resources/
-│   └── pipeline-boe.yaml                          # Pipeline declaration
+│   └── pipeline.yaml                          # Pipeline declaration
 └── pom.xml
 ```
 
@@ -135,7 +117,9 @@ boe-pipeline/
 |-------|----------------|
 | Java  | 21             |
 | Maven | 3.8+           |
-| Spool | 1.0.0-SNAPSHOT |
+| Spool | 1.1.2          |
+
+> **API key required** — you need a valid REE ESIOS API key. Set it in `pipeline.yaml` under `source.configuration.apiKey`.
 
 ---
 
@@ -150,14 +134,14 @@ mvn package
 ### 2. Run
 
 ```bash
-java -jar target/boe-pipeline.jar
+java -jar target/esios-pipeline.jar
 ```
 
-The pipeline will start, fetch today's BOE summary, and store each item as an event in the configured data lake.
+The pipeline starts, polls indicator 1293 from the ESIOS API every 10 minutes, and persists each value as an event in the configured data lake.
 
 ### 3. Configure paths
 
-Edit `src/main/resources/pipeline-boe.yaml` to change the inbox and data lake locations:
+Edit `src/main/resources/pipeline.yaml` to change the inbox and data lake locations:
 
 ```yaml
 infrastructure:
