@@ -1,4 +1,4 @@
-package software.examples.spool.boe;
+package software.examples.spool.esios;
 
 import software.spool.dsl.SpoolNodeDSL;
 import software.spool.runtime.OpenTelemetryConfiguration;
@@ -17,7 +17,7 @@ public class Application {
                     .metricsEndpoint("http://localhost:4320/v1/metrics")
                     .tracesEndpoint("http://localhost:4318/v1/traces")
                     .build())
-                .withNode(SpoolNodeDSL.fromDescriptor("/pipeline-boe.yaml"))
+                .withNode(SpoolNodeDSL.fromDescriptor("/pipeline.yaml"))
                 .build();
     }
 

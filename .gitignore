@@ -36,3 +36,9 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+repomix-output.xml
+*CLAUDE*.md
+NOTA-*.md
+NEXT-STEPS.md
+*-context

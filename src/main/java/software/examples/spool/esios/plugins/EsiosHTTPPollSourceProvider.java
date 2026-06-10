@@ -1,4 +1,4 @@
-package software.examples.spool.boe.plugins;
+package software.examples.spool.esios.plugins;
 
 import software.spool.crawler.api.port.source.PollSource;
 import software.spool.infrastructure.spi.SpoolPlugin;
@@ -6,10 +6,10 @@ import software.spool.infrastructure.spi.provider.PluginConfiguration;
 import software.spool.infrastructure.spi.provider.PollSourceProvider;
 
 @SpoolPlugin(PollSourceProvider.class)
-public class BOEHTTPPollSourceProvider implements PollSourceProvider {
+public class EsiosHTTPPollSourceProvider implements PollSourceProvider {
     @Override
     public String name() {
-        return "BOE_HTTP";
+        return "ESIOS_HTTP";
     }
 
     @Override
@@ -19,11 +19,15 @@ public class BOEHTTPPollSourceProvider implements PollSourceProvider {
 
     @Override
     public boolean supports(PluginConfiguration configuration) {
-        return configuration.has("url");
+        return configuration.has("url") && configuration.has("apiKey");
     }
 
     @Override
     public PollSource<?> create(PluginConfiguration configuration) {
-        return new BOEHTTPPollSource(configuration.require("url"));
+        return new EsiosHTTPPollSource(
+                configuration.require("url"),
+                configuration.require("apiKey"),
+                configuration.require("sourceId")
+        );
     }
 }

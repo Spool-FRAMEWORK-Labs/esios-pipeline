@@ -1,0 +1,45 @@
+infrastructure:
+  watchdog: "http://host.docker.internal:8090"
+
+  eventBus:
+    type: IN_MEMORY
+
+  inbox:
+    type: FILE_SYSTEM
+    configuration:
+      path: "D:/spool/inbox"
+
+  dataLake:
+    type: FILE_SYSTEM
+    configuration:
+      path: "D:/spool/datalake"
+
+modules:
+  - crawler:
+      type: POLL
+      id: esios-crawler
+      source:
+        type: ESIOS_HTTP
+        configuration:
+          sourceId: esios-api
+          url: "https://api.esios.ree.es/indicators/1293"
+          apiKey: 75ca7f2627a0a6538d4acfb5b58c25d37cfd449922bbc011247bdbee45713b3b
+          scheduleMilliseconds: 600000
+        mediaType: JSON_ARRAY
+        rootPath: indicator.values
+        enrichmentList:
+          - source: indicator.id
+            target: indicator_id
+      eventMapping:
+        namingConvention: SNAKE_CASE
+
+  - ingester:
+      id: esios-ingester
+      type: REACTIVE
+
+  - janitor:
+      id: esios-janitor
+      configuration:
+        milliseconds: 600000
+        millisecondsThreshold: 15000
+        millisecondsTTL: 600000
