@@ -1,13 +1,11 @@
+### Maven ###
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
 ### IntelliJ IDEA ###
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
+.idea/
 *.iws
 *.iml
 *.ipr
@@ -34,8 +32,22 @@ build/
 ### VS Code ###
 .vscode/
 
-### Mac OS ###
+### OS ###
 .DS_Store
+Thumbs.db
+Desktop.ini
+
+### Logs ###
+*.log
+logs/
+
+### Secretos y configuración local ###
+.env
+.env.*
+*.local.properties
+application-local.yml
+application-local.properties
+secrets/
 
 repomix-output.xml
 *CLAUDE*.md

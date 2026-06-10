@@ -27,7 +27,7 @@ modules:
           scheduleMilliseconds: 600000
         mediaType: JSON_ARRAY
         rootPath: indicator.values
-        enrichmentList:
+        enrichment:
           - source: indicator.id
             target: indicator_id
       eventMapping:
